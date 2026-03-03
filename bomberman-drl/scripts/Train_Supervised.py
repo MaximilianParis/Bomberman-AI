@@ -74,7 +74,8 @@ STEPPED_IN_EXPLOSION,
 STEPPED_TOWARDS_TARGET_POS,
 STEPPED_TOWARDS_TARGET_NEG,
 
-
+Target_IN_RANGE_POS,
+Target_IN_RANGE_NEG,
 
 CAN_ESCAPE_OWN_BOMB_POS,
 
@@ -582,7 +583,7 @@ def act_net(policy_net,state):
 
 
 
-def train(policy_net,optimizer,replay_memories,batch_sizes,criterion,max_steps=1):
+def train(policy_net,optimizer,replay_memories,replay_memories_mini,batch_sizes,criterion,max_steps=1):
      
     for training_steps in range(0,max_steps):
        
@@ -590,9 +591,14 @@ def train(policy_net,optimizer,replay_memories,batch_sizes,criterion,max_steps=1
         actions_list=[]
         cnt=0
         for replay_mem in replay_memories.items():
+            #print(f"Kategorie:{replay_mem[0]} Batchgroesse:{batch_sizes[cnt]}")
+            replay_mem_mini=replay_memories_mini[replay_mem[0]][0]
             replay_mem=replay_mem[1][0]
             if(len(replay_mem)>0):
                 sampled_states,sampled_actions = replay_mem.sample(min(batch_sizes[cnt],len(replay_mem)))
+                sampled_states_mini,sampled_actions_mini = replay_mem_mini.sample(min(batch_sizes[cnt],len(replay_mem_mini)))
+                sampled_states.extend(sampled_states_mini)
+                sampled_actions.extend(sampled_actions_mini)
                 sampled_states=[Transform_State(state) for state in sampled_states]
            
                 states_list.append(torch.tensor(sampled_states, dtype=torch.float32).to(device))
@@ -618,8 +624,8 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     #je nach Wichtigkeit der Kategorie wird pro Kategorie Anzahl an Zustandaktionspaaren berechnet die in den batch kommen
     print("")
     factor=replay_memories[BOMB_ESCAPE_LENGTH_ONE_NEG][1]/(replay_memories[BOMB_ESCAPE_LENGTH_ONE_NEG][1]+replay_memories[BOMB_ESCAPE_LENGTH_ONE_POS][1]+0.0000001)
-    batch_sizes[0]=int((factor*70)+10)
-    batch_sizes[1]=int((factor*70)+10)
+    batch_sizes[0]=int(0.5*int((factor*70)+10))
+    batch_sizes[1]=int(0.5*int((factor*70)+10))
    
     print(f"BOMB_ESCAPE_LENGTH_ONE_NEG:{replay_memories[BOMB_ESCAPE_LENGTH_ONE_NEG][1]}")
     print(f"BOMB_ESCAPE_LENGTH_ONE_POS:{replay_memories[BOMB_ESCAPE_LENGTH_ONE_POS][1]}")
@@ -628,8 +634,8 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     print("")
 
     factor=replay_memories[BOMB_ESCAPE_LENGTH_TWO_NEG][1]/(replay_memories[BOMB_ESCAPE_LENGTH_TWO_NEG][1]+replay_memories[BOMB_ESCAPE_LENGTH_TWO_POS][1]+0.0000001)
-    batch_sizes[2]=int((factor*60)+10)
-    batch_sizes[3]=int((factor*60)+10)
+    batch_sizes[2]=int(0.5*int((factor*60)+10))
+    batch_sizes[3]=int(0.5*int((factor*60)+10))
    
     print(f"BOMB_ESCAPE_LENGTH_TWO_NEG:{replay_memories[BOMB_ESCAPE_LENGTH_TWO_NEG][1]}")
     print(f"BOMB_ESCAPE_LENGTH_TWO_POS:{replay_memories[BOMB_ESCAPE_LENGTH_TWO_POS][1]}")
@@ -638,8 +644,8 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     print("")
 
     factor=replay_memories[BOMB_ESCAPE_LENGTH_THREE_NEG][1]/(replay_memories[BOMB_ESCAPE_LENGTH_THREE_NEG][1]+replay_memories[BOMB_ESCAPE_LENGTH_THREE_POS][1]+0.0000001)
-    batch_sizes[4]=int((factor*50)+10)
-    batch_sizes[5]=int((factor*50)+10)
+    batch_sizes[4]=int(0.5*int((factor*50)+10))
+    batch_sizes[5]=int(0.5*int((factor*50)+10))
     
     print(f"BOMB_ESCAPE_LENGTH_THREE_NEG:{replay_memories[BOMB_ESCAPE_LENGTH_THREE_NEG][1]}")
     print(f"BOMB_ESCAPE_LENGTH_THREE_POS:{replay_memories[BOMB_ESCAPE_LENGTH_THREE_POS][1]}")
@@ -648,8 +654,8 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     print("")
 
     factor=replay_memories[BOMB_ESCAPE_LENGTH_FOUR_NEG][1]/(replay_memories[BOMB_ESCAPE_LENGTH_FOUR_NEG][1]+replay_memories[BOMB_ESCAPE_LENGTH_FOUR_POS][1]+0.0000001)
-    batch_sizes[6]=int((factor*20)+10)
-    batch_sizes[7]=int((factor*20)+10)
+    batch_sizes[6]=int(0.5*int((factor*20)+10))
+    batch_sizes[7]=int(0.5*int((factor*20)+10))
     
     print(f"BOMB_ESCAPE_LENGTH_FOUR_NEG:{replay_memories[BOMB_ESCAPE_LENGTH_FOUR_NEG][1]}")
     print(f"BOMB_ESCAPE_LENGTH_FOUR_POS:{replay_memories[BOMB_ESCAPE_LENGTH_FOUR_POS][1]}")
@@ -657,15 +663,15 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     print(f"batch_sizes:{batch_sizes[6]}")
     print("")
        
-    batch_sizes[8]=int(replay_memories[STEPPED_IN_BLOCKED_FIELD][1]*0.5+10)
+    batch_sizes[8]=int(0.5*int(replay_memories[STEPPED_IN_BLOCKED_FIELD][1]*0.5+10))
     
     print(f"STEPPED_IN_BLOCKED_FIELD:{replay_memories[STEPPED_IN_BLOCKED_FIELD][1]}")
     print(f"batch_sizes:{batch_sizes[8]}")
     print("")
 
     factor=replay_memories[STEPPED_TOWARDS_TARGET_NEG][1]/(replay_memories[STEPPED_TOWARDS_TARGET_NEG][1]+replay_memories[STEPPED_TOWARDS_TARGET_POS][1]+0.0000001)
-    batch_sizes[9]=int((factor*120)+50)
-    batch_sizes[10]=int((factor*120)+50)
+    batch_sizes[9]=int(0.5*int((factor*120)+50))
+    batch_sizes[10]=int(0.5*int((factor*120)+50))
    
     print(f"STEPPED_TOWARDS_TARGET_NEG:{replay_memories[STEPPED_TOWARDS_TARGET_NEG][1]}")
     print(f"STEPPED_TOWARDS_TARGET_POS:{replay_memories[STEPPED_TOWARDS_TARGET_POS][1]}")
@@ -674,8 +680,8 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     print("")
 
     factor=replay_memories[STEPPED_TOWARDS_COIN_NEG][1]/(replay_memories[STEPPED_TOWARDS_COIN_NEG][1]+replay_memories[STEPPED_TOWARDS_COIN_POS][1]+0.0000001)
-    batch_sizes[11]=int((factor*100)+40)
-    batch_sizes[12]=int((factor*100)+40)
+    batch_sizes[11]=int(0.5*int((factor*100)+40))
+    batch_sizes[12]=int(0.5*int((factor*100)+40))
    
     print(f"STEPPED_TOWARDS_COIN_NEG:{replay_memories[STEPPED_TOWARDS_COIN_NEG][1]}")
     print(f"STEPPED_TOWARDS_COIN_POS:{replay_memories[STEPPED_TOWARDS_COIN_POS][1]}")
@@ -684,8 +690,8 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     print("")
 
     factor=replay_memories[Target_IN_RANGE_NEG][1]/(replay_memories[Target_IN_RANGE_NEG][1]+replay_memories[Target_IN_RANGE_POS][1]+0.0000001)
-    batch_sizes[13]=int((factor*80)+30)
-    batch_sizes[14]=int((factor*80)+30)
+    batch_sizes[13]=int(0.5*int((factor*80)+30))
+    batch_sizes[14]=int(0.5*int((factor*80)+30))
    
     print(f"Target_IN_RANGE_NEG:{replay_memories[Target_IN_RANGE_NEG][1]}")
     print(f"Target_IN_RANGE_POS:{replay_memories[Target_IN_RANGE_POS][1]}")
@@ -694,8 +700,8 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     print("")
 
     factor=replay_memories[CAN_ESCAPE_OWN_BOMB_NEG][1]/(replay_memories[CAN_ESCAPE_OWN_BOMB_NEG][1]+replay_memories[CAN_ESCAPE_OWN_BOMB_POS][1]+0.0000001)
-    batch_sizes[15]=int((factor*80)+30)
-    batch_sizes[16]=int((factor*80)+30)
+    batch_sizes[15]=int(0.5*int((factor*80)+30))
+    batch_sizes[16]=int(0.5*int((factor*80)+30))
    
     print(f"CAN_ESCAPE_OWN_BOMB_NEG:{replay_memories[CAN_ESCAPE_OWN_BOMB_NEG][1]}")
     print(f"CAN_ESCAPE_OWN_BOMB_POS:{replay_memories[CAN_ESCAPE_OWN_BOMB_POS][1]}")
@@ -703,13 +709,13 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     print(f"batch_sizes:{batch_sizes[15]}")
     print("")
 
-    batch_sizes[17]=int(replay_memories[PLANTED_WITHOUT_BOMBS_LEFT][1]*0.5+10)
+    batch_sizes[17]=int(0.5*int(replay_memories[PLANTED_WITHOUT_BOMBS_LEFT][1]*0.5+10))
     
     print(f"PLANTED_WITHOUT_BOMBS_LEFT:{replay_memories[PLANTED_WITHOUT_BOMBS_LEFT][1]}")
     print(f"batch_sizes:{batch_sizes[17]}")
     print("")
    
-    batch_sizes[18]=int(replay_memories[SHOULD_HAVE_PLANTED_BOMB][1]*0.5+20)
+    batch_sizes[18]=int(0.5*int(replay_memories[SHOULD_HAVE_PLANTED_BOMB][1]*0.5+20))
     
 
     print(f"SHOULD_HAVE_PLANTED_BOMB:{replay_memories[SHOULD_HAVE_PLANTED_BOMB][1]}")
@@ -730,7 +736,7 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
     replay_memories[STEPPED_TOWARDS_TARGET_NEG][1]=0
     replay_memories[STEPPED_TOWARDS_TARGET_POS][1]=0
     replay_memories[Target_IN_RANGE_POS][1]=0
-    replay_memories[Target_IN_RANGE_POS][1]=0
+    replay_memories[Target_IN_RANGE_NEG][1]=0
     replay_memories[CAN_ESCAPE_OWN_BOMB_POS][1]=0
     replay_memories[CAN_ESCAPE_OWN_BOMB_NEG][1]=0
     replay_memories[PLANTED_WITHOUT_BOMBS_LEFT][1]=0
@@ -742,7 +748,7 @@ def configurate_batch_sizes(replay_memories,batch_sizes):
 
 
 
-def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memory_list):
+def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memory_list,events_replay_memory_list_mini):
         bombs_old = state["bombs"]
         walls_old=state["walls"]
         crates_old=state["crates"]
@@ -763,18 +769,22 @@ def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memo
         if timestamp_dead_marker[(1,x_old-1,y_old)]>=2 and net_action==3:
             events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][0].push(state,expert_action)
             events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][1]= events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][1]+1
+            events_replay_memory_list_mini[STEPPED_IN_BLOCKED_FIELD][0].push(state,expert_action)
                 
         elif timestamp_dead_marker[(1,x_old+1,y_old)]>=2 and net_action==1:
             events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][0].push(state,expert_action)
             events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][1]= events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][1]+1
+            events_replay_memory_list_mini[STEPPED_IN_BLOCKED_FIELD][0].push(state,expert_action)
                 
         elif timestamp_dead_marker[(1,x_old,y_old-1)]>=2 and net_action==2:
             events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][0].push(state,expert_action)
             events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][1]= events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][1]+1
+            events_replay_memory_list_mini[STEPPED_IN_BLOCKED_FIELD][0].push(state,expert_action)
                 
         elif timestamp_dead_marker[(1,x_old,y_old+1)]>=2 and net_action==0:
             events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][0].push(state,expert_action)
             events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][1]= events_replay_memory_list[STEPPED_IN_BLOCKED_FIELD][1]+1
+            events_replay_memory_list_mini[STEPPED_IN_BLOCKED_FIELD][0].push(state,expert_action)
 
 
         if timestamp_dead_marker[(0,x_old,y_old)]==1 or timestamp_dead_marker[(0,x_old,y_old)]==4:
@@ -783,41 +793,49 @@ def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memo
             if memo[(x_old,y_old,0)]==1 and net_action==expert_action:
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_ONE_POS][0].push(state,expert_action)
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_ONE_POS][1]= events_replay_memory_list[BOMB_ESCAPE_LENGTH_ONE_POS][1]+1
+                 events_replay_memory_list_mini[BOMB_ESCAPE_LENGTH_ONE_POS][0].push(state,expert_action)
 
 
             elif memo[(x_old,y_old,0)]==1 and net_action!=expert_action:
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_ONE_NEG][0].push(state,expert_action)
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_ONE_NEG][1]= events_replay_memory_list[BOMB_ESCAPE_LENGTH_ONE_NEG][1]+1
+                 events_replay_memory_list_mini[BOMB_ESCAPE_LENGTH_ONE_NEG][0].push(state,expert_action)
                 
 
             elif memo[(x_old,y_old,0)]==2 and net_action==expert_action:
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_TWO_POS][0].push(state,expert_action)
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_TWO_POS][1]= events_replay_memory_list[BOMB_ESCAPE_LENGTH_TWO_POS][1]+1
+                 events_replay_memory_list_mini[BOMB_ESCAPE_LENGTH_TWO_POS][0].push(state,expert_action)
 
 
             elif memo[(x_old,y_old,0)]==2 and net_action!=expert_action:
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_TWO_NEG][0].push(state,expert_action)
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_TWO_NEG][1]= events_replay_memory_list[BOMB_ESCAPE_LENGTH_TWO_NEG][1]+1
+                 events_replay_memory_list_mini[BOMB_ESCAPE_LENGTH_TWO_NEG][0].push(state,expert_action)
 
 
             elif memo[(x_old,y_old,0)]==3 and net_action==expert_action:
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_THREE_POS][0].push(state,expert_action)
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_THREE_POS][1]= events_replay_memory_list[BOMB_ESCAPE_LENGTH_THREE_POS][1]+1
+                 events_replay_memory_list_mini[BOMB_ESCAPE_LENGTH_THREE_POS][0].push(state,expert_action)
 
 
             elif memo[(x_old,y_old,0)]==3 and net_action!=expert_action:
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_THREE_NEG][0].push(state,expert_action)
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_THREE_NEG][1]= events_replay_memory_list[BOMB_ESCAPE_LENGTH_THREE_NEG][1]+1
+                 events_replay_memory_list_mini[BOMB_ESCAPE_LENGTH_THREE_NEG][0].push(state,expert_action)
 
 
             elif memo[(x_old,y_old,0)]==4 and net_action==expert_action:
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_FOUR_POS][0].push(state,expert_action)
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_FOUR_POS][1]= events_replay_memory_list[BOMB_ESCAPE_LENGTH_FOUR_POS][1]+1
+                 events_replay_memory_list_mini[BOMB_ESCAPE_LENGTH_FOUR_POS][0].push(state,expert_action)
 
 
             elif memo[(x_old,y_old,0)]==4 and net_action!=expert_action:
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_FOUR_NEG][0].push(state,expert_action)
                  events_replay_memory_list[BOMB_ESCAPE_LENGTH_FOUR_NEG][1]= events_replay_memory_list[BOMB_ESCAPE_LENGTH_FOUR_NEG][1]+1
+                 events_replay_memory_list_mini[BOMB_ESCAPE_LENGTH_FOUR_NEG][0].push(state,expert_action)
 
 
         else:
@@ -827,9 +845,11 @@ def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memo
                 if net_action==expert_action:
                      events_replay_memory_list[STEPPED_TOWARDS_COIN_POS][0].push(state,expert_action)
                      events_replay_memory_list[STEPPED_TOWARDS_COIN_POS][1]= events_replay_memory_list[STEPPED_TOWARDS_COIN_POS][1]+1
+                     events_replay_memory_list_mini[STEPPED_TOWARDS_COIN_POS][0].push(state,expert_action)
                 else:
                      events_replay_memory_list[STEPPED_TOWARDS_COIN_NEG][0].push(state,expert_action)
                      events_replay_memory_list[STEPPED_TOWARDS_COIN_NEG][1]= events_replay_memory_list[STEPPED_TOWARDS_COIN_NEG][1]+1
+                     events_replay_memory_list_mini[STEPPED_TOWARDS_COIN_NEG][0].push(state,expert_action)
 
 
             else:
@@ -837,19 +857,24 @@ def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memo
                     if net_action==5:
                         events_replay_memory_list[Target_IN_RANGE_POS][0].push(state,expert_action)
                         events_replay_memory_list[Target_IN_RANGE_POS][1]= events_replay_memory_list[Target_IN_RANGE_POS][1]+1
+                        events_replay_memory_list_mini[Target_IN_RANGE_POS][0].push(state,expert_action)
                         events_replay_memory_list[CAN_ESCAPE_OWN_BOMB_POS][0].push(state,expert_action)
                         events_replay_memory_list[CAN_ESCAPE_OWN_BOMB_POS][1]= events_replay_memory_list[CAN_ESCAPE_OWN_BOMB_POS][1]+1
+                        events_replay_memory_list_mini[CAN_ESCAPE_OWN_BOMB_POS][0].push(state,expert_action)
                     else:
                          events_replay_memory_list[SHOULD_HAVE_PLANTED_BOMB][0].push(state,expert_action)
                          events_replay_memory_list[SHOULD_HAVE_PLANTED_BOMB][1]= events_replay_memory_list[SHOULD_HAVE_PLANTED_BOMB][1]+1
+                         events_replay_memory_list_mini[SHOULD_HAVE_PLANTED_BOMB][0].push(state,expert_action)
 
                 else:
                      if net_action==expert_action:
                          events_replay_memory_list[STEPPED_TOWARDS_TARGET_POS][0].push(state,expert_action)
                          events_replay_memory_list[STEPPED_TOWARDS_TARGET_POS][1]= events_replay_memory_list[STEPPED_TOWARDS_TARGET_POS][1]+1
+                         events_replay_memory_list_mini[STEPPED_TOWARDS_TARGET_POS][0].push(state,expert_action)
                      else:
                          events_replay_memory_list[STEPPED_TOWARDS_TARGET_NEG][0].push(state,expert_action)
                          events_replay_memory_list[STEPPED_TOWARDS_TARGET_NEG][1]= events_replay_memory_list[STEPPED_TOWARDS_TARGET_NEG][1]+1
+                         events_replay_memory_list_mini[STEPPED_TOWARDS_TARGET_NEG][0].push(state,expert_action)
 
                      if net_action==5:
                           timestamp_dead_marker=compute_timestamp_dead_marker_with_extra_bomb(state["opponents_pos"],bombs_old,explosions_old,crates_old,walls_old,x_old,y_old)
@@ -860,16 +885,19 @@ def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memo
                           if memo[(x_old,y_old,0)]>4:
                              events_replay_memory_list[CAN_ESCAPE_OWN_BOMB_NEG][0].push(state,expert_action)
                              events_replay_memory_list[CAN_ESCAPE_OWN_BOMB_NEG][1]= events_replay_memory_list[CAN_ESCAPE_OWN_BOMB_NEG][1]+1
+                             events_replay_memory_list_mini[CAN_ESCAPE_OWN_BOMB_NEG][0].push(state,expert_action)
 
                           Bomb_Exlpoison_Radius_Local=Compute_Bomb_Exlpoison_Radius_Local(walls_old,x_old,y_old)
-
+                        
                           if (expert.target_x,expert.target_y) not in Bomb_Exlpoison_Radius_Local:
                              events_replay_memory_list[Target_IN_RANGE_NEG][0].push(state,expert_action)
                              events_replay_memory_list[Target_IN_RANGE_NEG][1]= events_replay_memory_list[Target_IN_RANGE_NEG][1]+1
+                             events_replay_memory_list_mini[Target_IN_RANGE_NEG][0].push(state,expert_action)
 
                           if bombs_left==0:
                                events_replay_memory_list[PLANTED_WITHOUT_BOMBS_LEFT][0].push(state,expert_action)
                                events_replay_memory_list[PLANTED_WITHOUT_BOMBS_LEFT][1]= events_replay_memory_list[PLANTED_WITHOUT_BOMBS_LEFT][1]+1
+                               events_replay_memory_list_mini[PLANTED_WITHOUT_BOMBS_LEFT][0].push(state,expert_action)
 
 
                         
@@ -901,7 +929,25 @@ def loop(env,policy_net,optimizer,criterion, n_episodes=500):
                             ,(CAN_ESCAPE_OWN_BOMB_NEG,[ReplayMemory(2000),0]),(CAN_ESCAPE_OWN_BOMB_POS,[ReplayMemory(2000),0])
                             ,(PLANTED_WITHOUT_BOMBS_LEFT,[ReplayMemory(500),0]),(SHOULD_HAVE_PLANTED_BOMB,[ReplayMemory(500),0])
                             ])
+    events_replay_memory_list_mini_push=dict([(BOMB_ESCAPE_LENGTH_ONE_POS,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_ONE_NEG,[ReplayMemory(1000),0])
+                            ,(BOMB_ESCAPE_LENGTH_TWO_POS,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_TWO_NEG,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_THREE_POS,[ReplayMemory(1000),0])
+                            ,(BOMB_ESCAPE_LENGTH_THREE_NEG,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_FOUR_POS,[ReplayMemory(500),0]),(BOMB_ESCAPE_LENGTH_FOUR_NEG,[ReplayMemory(500),0])
+                            ,(STEPPED_IN_BLOCKED_FIELD,[ReplayMemory(1000),0]),(STEPPED_TOWARDS_TARGET_POS,[ReplayMemory(2000),0])
+                            ,(STEPPED_TOWARDS_TARGET_NEG,[ReplayMemory(2000),0]),(STEPPED_TOWARDS_COIN_POS,[ReplayMemory(2000),0]),(STEPPED_TOWARDS_COIN_NEG,[ReplayMemory(2000),0])
+                            ,(Target_IN_RANGE_NEG,[ReplayMemory(1000),0]),(Target_IN_RANGE_POS,[ReplayMemory(1000),0])
+                            ,(CAN_ESCAPE_OWN_BOMB_NEG,[ReplayMemory(2000),0]),(CAN_ESCAPE_OWN_BOMB_POS,[ReplayMemory(2000),0])
+                            ,(PLANTED_WITHOUT_BOMBS_LEFT,[ReplayMemory(500),0]),(SHOULD_HAVE_PLANTED_BOMB,[ReplayMemory(500),0])
+                            ])
 
+    events_replay_memory_list_mini_sample=dict([(BOMB_ESCAPE_LENGTH_ONE_POS,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_ONE_NEG,[ReplayMemory(1000),0])
+                            ,(BOMB_ESCAPE_LENGTH_TWO_POS,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_TWO_NEG,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_THREE_POS,[ReplayMemory(1000),0])
+                            ,(BOMB_ESCAPE_LENGTH_THREE_NEG,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_FOUR_POS,[ReplayMemory(500),0]),(BOMB_ESCAPE_LENGTH_FOUR_NEG,[ReplayMemory(500),0])
+                            ,(STEPPED_IN_BLOCKED_FIELD,[ReplayMemory(1000),0]),(STEPPED_TOWARDS_TARGET_POS,[ReplayMemory(2000),0])
+                            ,(STEPPED_TOWARDS_TARGET_NEG,[ReplayMemory(2000),0]),(STEPPED_TOWARDS_COIN_POS,[ReplayMemory(2000),0]),(STEPPED_TOWARDS_COIN_NEG,[ReplayMemory(2000),0])
+                            ,(Target_IN_RANGE_NEG,[ReplayMemory(1000),0]),(Target_IN_RANGE_POS,[ReplayMemory(1000),0])
+                            ,(CAN_ESCAPE_OWN_BOMB_NEG,[ReplayMemory(2000),0]),(CAN_ESCAPE_OWN_BOMB_POS,[ReplayMemory(2000),0])
+                            ,(PLANTED_WITHOUT_BOMBS_LEFT,[ReplayMemory(500),0]),(SHOULD_HAVE_PLANTED_BOMB,[ReplayMemory(500),0])
+                            ])
     batch_sizes=[20 for i in range(0,19)]
 
     cnt_steps=0
@@ -929,15 +975,26 @@ def loop(env,policy_net,optimizer,criterion, n_episodes=500):
            
             new_state, _, terminated, truncated, info = env.step(action)
 
-            evaluate_net_action(state,action,expert_action,expert,events_replay_memory_list)
+            evaluate_net_action(state,action,expert_action,expert,events_replay_memory_list,events_replay_memory_list_mini_push)
 
             if cnt_epsiodes==epsiodes_to_reconfigurate_batch:
                 configurate_batch_sizes(events_replay_memory_list,batch_sizes)
                 cnt_epsiodes=0
+                events_replay_memory_list_mini_sample=events_replay_memory_list_mini_push
+                events_replay_memory_list_mini_push=dict([(BOMB_ESCAPE_LENGTH_ONE_POS,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_ONE_NEG,[ReplayMemory(1000),0])
+                            ,(BOMB_ESCAPE_LENGTH_TWO_POS,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_TWO_NEG,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_THREE_POS,[ReplayMemory(1000),0])
+                            ,(BOMB_ESCAPE_LENGTH_THREE_NEG,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_FOUR_POS,[ReplayMemory(500),0]),(BOMB_ESCAPE_LENGTH_FOUR_NEG,[ReplayMemory(500),0])
+                            ,(STEPPED_IN_BLOCKED_FIELD,[ReplayMemory(1000),0]),(STEPPED_TOWARDS_TARGET_POS,[ReplayMemory(2000),0])
+                            ,(STEPPED_TOWARDS_TARGET_NEG,[ReplayMemory(2000),0]),(STEPPED_TOWARDS_COIN_POS,[ReplayMemory(2000),0]),(STEPPED_TOWARDS_COIN_NEG,[ReplayMemory(2000),0])
+                            ,(Target_IN_RANGE_NEG,[ReplayMemory(1000),0]),(Target_IN_RANGE_POS,[ReplayMemory(1000),0])
+                            ,(CAN_ESCAPE_OWN_BOMB_NEG,[ReplayMemory(2000),0]),(CAN_ESCAPE_OWN_BOMB_POS,[ReplayMemory(2000),0])
+                            ,(PLANTED_WITHOUT_BOMBS_LEFT,[ReplayMemory(500),0]),(SHOULD_HAVE_PLANTED_BOMB,[ReplayMemory(500),0])
+                            ])
 
             if first_episodes>=epsiodes_to_reconfigurate_batch and train_every_x_steps<=cnt_steps:
-               train(policy_net,optimizer,events_replay_memory_list,batch_sizes,criterion)
+               train(policy_net,optimizer,events_replay_memory_list,events_replay_memory_list_mini_sample,batch_sizes,criterion)
                cnt_steps=0
+               
 
             state = new_state 
 

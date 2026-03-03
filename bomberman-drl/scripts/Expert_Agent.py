@@ -332,7 +332,7 @@ class Expert_Agent:
             limit=5
             find_rescue_route(timestamp_dead_marker,x_old,y_old,0,memo,limit)
             bombs_left=state["self_info"]["bombs_left"]
-
+            self.distanz_target=distanz
                
             if distanz<=2 and (x_target,y_target) in Bomb_Exlpoison_Radius_Local and memo[(x_old,y_old,0)]<=limit and bombs_left>=1:
                     action=5
