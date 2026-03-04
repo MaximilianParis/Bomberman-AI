@@ -332,7 +332,7 @@ class Expert_Agent:
             limit=5
             find_rescue_route(timestamp_dead_marker,x_old,y_old,0,memo,limit)
             bombs_left=state["self_info"]["bombs_left"]
-            self.distanz_target=distanz
+            self.target_distanz=abs(x_old-x_target)+abs(y_old-y_target)
                
             if distanz<=2 and (x_target,y_target) in Bomb_Exlpoison_Radius_Local and memo[(x_old,y_old,0)]<=limit and bombs_left>=1:
                     action=5
@@ -343,7 +343,8 @@ class Expert_Agent:
 
             elif distanz>=2:
                 action=self.back_track(x_old,y_old,x_target,y_target,predecessor)
-                self.replay_memories[4].push(state,action)
+                if(self.target_distanz<=15):
+                    self.replay_memories[4].push(state,action)
 
             else:
                 action=4
@@ -363,14 +364,15 @@ class Expert_Agent:
         explosions=state["explosions"]
         coins=state["coins"]
         bombs = state["bombs"]
-
+        self.target_distanz=abs(x_old-x_target)+abs(y_old-y_target)
         if x_target==-1:
             action=4
         else:
              
             if distanz>=1:
                 action=self.back_track(x_old,y_old,x_target,y_target,predecessor)
-                self.replay_memories[4].push(state,action)
+                if(self.target_distanz<=15):
+                    self.replay_memories[4].push(state,action)
             else:
                 action=4
 
@@ -560,11 +562,11 @@ class Expert_Agent:
                       self.target_x,self.target_y=x_coin,y_coin
                       return self.collect_coin(state,x_old,y_old,x_coin,y_coin,distanz_coin,predecessor_coin)
 
-                elif distanz_coin<=distanz_enemy and distanz_coin<=distanz_crate+8:
+                elif distanz_coin<=distanz_enemy and distanz_coin!=1e9:
                       self.target_x,self.target_y=x_coin,y_coin
                       return self.collect_coin(state,x_old,y_old,x_coin,y_coin,distanz_coin,predecessor_coin)
              
-                elif distanz_enemy<=distanz_crate+8:
+                elif distanz_enemy<distanz_coin:
                       self.target_x,self.target_y=x_enemy,y_enemy
                       return self.plant_bomb(state,x_old,y_old,x_enemy,y_enemy,distanz_enemy,predecessor_enemy)
 

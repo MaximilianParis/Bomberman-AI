@@ -12,6 +12,8 @@ from argparsing import parse
 from collections import deque
 from Expert_Agent import Expert_Agent
 from pathlib import Path
+from Nets import BaseActor
+from State_Algorithms import Transform_State,find_rescue_route,compute_timestamp_dead_marker,compute_timestamp_dead_marker_with_extra_bomb,Compute_Bomb_Exlpoison_Radius,Compute_Bomb_Exlpoison_Radius_Local
 
 STEPPED_IN_BOMB_NEG="STEPPED_IN_BOMB_NEG"
 
@@ -123,404 +125,7 @@ class ReplayMemory(object):
 
 
 
-def find_rescue_route(timestamp_dead_marker,i,j,iteration=0,memo={},limit=10):
-        if(((i,j,iteration) in memo)):
-            return 
-        memo[(i,j,iteration)]=iteration
-      
-        if(iteration>0 and timestamp_dead_marker[iteration,i,j]>=2):
-            memo[(i,j,iteration)]=limit+1
-           
-        elif(timestamp_dead_marker[iteration,i,j]==1 or (iteration==0 and timestamp_dead_marker[iteration,i,j]==4)):
-            memo[(i,j,iteration)]=limit+1
-            if(iteration<limit):
 
-                find_rescue_route(timestamp_dead_marker,i-1,j,iteration+1,memo,limit)
-                memo[(i,j,iteration)]=min(memo[(i,j,iteration)],memo[(i-1,j,iteration+1)])
-            
-
-                find_rescue_route(timestamp_dead_marker,i+1,j,iteration+1,memo,limit)
-                memo[(i,j,iteration)]=min(memo[(i,j,iteration)],memo[(i+1,j,iteration+1)])
-           
-
-                find_rescue_route(timestamp_dead_marker,i,j-1,iteration+1,memo,limit)
-                memo[(i,j,iteration)]=min(memo[(i,j,iteration)],memo[(i,j-1,iteration+1)])
-           
-
-                find_rescue_route(timestamp_dead_marker,i,j+1,iteration+1,memo,limit)
-                memo[(i,j,iteration)]=min(memo[(i,j,iteration)],memo[(i,j+1,iteration+1)])
-           
-
-                find_rescue_route(timestamp_dead_marker,i,j,iteration+1,memo,limit)
-                memo[(i,j,iteration)]=min(memo[(i,j,iteration)],memo[(i,j,iteration+1)])
-           
-
-                if iteration==0 and memo[(i,j,iteration)]<limit+1 and memo[(i-1,j,iteration+1)]==memo[(i,j,iteration)]:
-                    return 3
-
-                if iteration==0 and memo[(i,j,iteration)]<limit+1 and memo[(i+1,j,iteration+1)]==memo[(i,j,iteration)]:
-                    return 1
-
-
-                if iteration==0 and memo[(i,j,iteration)]<limit+1 and memo[(i,j-1,iteration+1)]==memo[(i,j,iteration)]:
-                    return 2
-
-                if iteration==0 and memo[(i,j,iteration)]<limit+1 and memo[(i,j+1,iteration+1)]==memo[(i,j,iteration)]:
-                    return 0
-        else:
-             return 4
-
-        return 4
-
-def Compute_Bomb_Exlpoison_Radius(bomb_exploison_radius,bombs,walls):
-    bomb_xys = [(i, j) for i in range(0,17) for j in range(0,17) if bombs[i,j]>=1]
-    for (i,j) in bomb_xys:
-            bomb_exploison_radius[i,j]=bombs[i,j]
-            for k in range(1,4):
-                if(i-k>0 and walls[i-k,j]==0):
-                  bomb_exploison_radius[i-k,j]=bombs[i,j]
-                #Wand blockt Exlposion breche ab
-                elif(i-k>0 and walls[i-k,j]==1):
-                    break
-            #Streifen oben
-            for k in range(1,4): 
-                if(j-k>0 and walls[i,j-k]==0):
-                  bomb_exploison_radius[i,j-k]=bombs[i,j]
-                #Wand blockt Exlposion breche ab
-                elif(j-k>0 and walls[i,j-k]==1):
-                    break
-
-            #Streifen rechts
-            for k in range(1,4):
-                if(i+k<16 and walls[i+k,j]==0):
-                    bomb_exploison_radius[i+k,j]=bombs[i,j]
-                #Wand blockt Exlposion breche ab
-                elif(i+k<16 and walls[i+k,j]==1):
-                    break
-            #Streifen unten
-            for k in range(1,4): 
-                if(j+k<16 and walls[i,j+k]==0):
-                     bomb_exploison_radius[i,j+k]=bombs[i,j]
-                #Wand blockt Exlposion breche ab
-                elif(j+k<16 and walls[i,j+k]==1):
-                    break
-
-
-
-
-def Compute_Bomb_Exlpoison_Radius_Local(walls,i,j):
-    bomb_blast = [(i, j)]
-  
-            
-    for k in range(1,4):
-        if(i-k>0 and walls[i-k,j]==0):
-            bomb_blast.append((i-k,j))
-        #Wand blockt Exlposion breche ab
-        elif(i-k>0 and walls[i-k,j]==1):
-            break
-    #Streifen oben
-    for k in range(1,4): 
-        if(j-k>0 and walls[i,j-k]==0):
-             bomb_blast.append((i,j-k))
-        #Wand blockt Exlposion breche ab
-        elif(j-k>0 and walls[i,j-k]==1):
-            break
-
-    #Streifen rechts
-    for k in range(1,4):
-        if(i+k<16 and walls[i+k,j]==0):
-             bomb_blast.append((i+k,j))
-        #Wand blockt Exlposion breche ab
-        elif(i+k<16 and walls[i+k,j]==1):
-            break
-    #Streifen unten
-    for k in range(1,4): 
-        if(j+k<16 and walls[i,j+k]==0):
-             bomb_blast.append((i,j+k))
-        #Wand blockt Exlposion breche ab
-        elif(j+k<16 and walls[i,j+k]==1):
-            break
-
-    return bomb_blast
-
-def compute_timestamp_dead_marker_with_extra_bomb(opponents,bombs,explosions,crates,walls,cur_bomb_x,cur_bomb_y,time_limit_escape=6):
-    
-    limit_x=16
-    limit_y=16
-    #0 frei, 1 in Bombenradis, 2 Crate, 3 in Bombenradis und Crate, 4 Wand oder Explosion
-    timestamp_dead_marker=np.zeros((time_limit_escape,limit_x+1,limit_y+1))
-
-    #for i in range(0,17):
-       #for j in range(0,17):
-           #if explosions[i,j]==12:
-           #    explosions[i,j]=2
-               
-           #elif explosions[i,j]==11:
-           #    explosions[i,j]=1
-               
-           #else:
-               #explosions[i,j]=0
-
-    explosion_xy=[(i,j,explosions[i,j]-11) for i in range(0,limit_x+1) for j in range(0,limit_y+1) if explosions[i,j]>=12]
-    bomb_xys = [(i, j,(4-bombs[i,j])) for i in range(0,17) for j in range(0,17) if bombs[i,j]>=1]
-    bomb_xys.append((cur_bomb_x,cur_bomb_y,4))
-      
-    for (cur_x,cur_y,explosion_timer) in explosion_xy:
-                      
-        for t in range(0,explosion_timer):
-            timestamp_dead_marker[t,cur_x,cur_y]=4
-    #print(bombs)
-    #print(bomb_xys)
-    for (i, j,bomb_timer) in bomb_xys:
-        bomb_blast=Compute_Bomb_Exlpoison_Radius_Local(walls,i,j)
-        for (cur_x,cur_y) in bomb_blast:
-
-
-            for t in range(bomb_timer,bomb_timer+2):
-                timestamp_dead_marker[t,cur_x,cur_y]=4
-
-            if cur_x==i and cur_y==j:
-                 for t in range(0,bomb_timer):
-                    timestamp_dead_marker[t,cur_x,cur_y]=4
-            else:
-                for t in range(0,bomb_timer):
-                    timestamp_dead_marker[t,cur_x,cur_y]=max(1,timestamp_dead_marker[t,cur_x,cur_y])
-
-
-    for i in range(0,limit_x+1):
-        for j in range(0,limit_y+1):
-            if walls[i,j]==1 or opponents[i,j]==1:
-                    for t in range(0,time_limit_escape):
-                        timestamp_dead_marker[t,i,j]=4
-            elif crates[i,j]==1:
-                for t in range(0,time_limit_escape):
-                    if timestamp_dead_marker[t,i,j]==4:
-                        break
-                    elif timestamp_dead_marker[t,i,j]==1:
-                        timestamp_dead_marker[t,i,j]=3
-                    else:
-                        timestamp_dead_marker[t,i,j]=2
-
-    return timestamp_dead_marker
-
-
-def compute_timestamp_dead_marker(opponents,bombs,explosions,crates,walls,time_limit_escape=6):
-    
-    limit_x=16
-    limit_y=16
-    #0 frei, 1 in Bombenradis, 2 Crate, 3 in Bombenradis und Crate, 4 Wand oder Explosion
-    timestamp_dead_marker=np.zeros((time_limit_escape,limit_x+1,limit_y+1))
-     
-
-    explosion_xy=[(i,j,explosions[i,j]-10) for i in range(0,limit_x+1) for j in range(0,limit_y+1) if explosions[i,j]>=11]
-    bomb_xys = [(i, j,(4-bombs[i,j])+1) for i in range(0,17) for j in range(0,17) if bombs[i,j]>=1]
-      
-      
-    for (cur_x,cur_y,explosion_timer) in explosion_xy:
-                      
-        for t in range(0,explosion_timer):
-            timestamp_dead_marker[t,cur_x,cur_y]=4
-    #print(bombs)
-    #print(bomb_xys)
-    for (i, j,bomb_timer) in bomb_xys:
-        bomb_blast=Compute_Bomb_Exlpoison_Radius_Local(walls,i,j)
-        for (cur_x,cur_y) in bomb_blast:
-
-
-            for t in range(bomb_timer,bomb_timer+2):
-                timestamp_dead_marker[t,cur_x,cur_y]=4
-
-            if cur_x==i and cur_y==j:
-                 for t in range(0,bomb_timer):
-                    timestamp_dead_marker[t,cur_x,cur_y]=4
-            else:
-                for t in range(0,bomb_timer):
-                    timestamp_dead_marker[t,cur_x,cur_y]=max(1,timestamp_dead_marker[t,cur_x,cur_y])
-
-
-    for i in range(0,limit_x+1):
-        for j in range(0,limit_y+1):
-          if walls[i,j]==1 or opponents[i,j]==1:
-                    for t in range(0,time_limit_escape):
-                        timestamp_dead_marker[t,i,j]=4
-          elif crates[i,j]==1:
-                for t in range(0,time_limit_escape):
-                    if timestamp_dead_marker[t,i,j]==4:
-                        break
-                    elif timestamp_dead_marker[t,i,j]==1:
-                        timestamp_dead_marker[t,i,j]=3
-                    else:
-                        timestamp_dead_marker[t,i,j]=2
-
-    return timestamp_dead_marker
-
-#frei alles 0
-#wall 1
-#Muenze 2
-#Spieler 3
-#Bombe 4
-def Transform_State(state):
-
-    opponents=state["opponents_pos"]
-    bombs=state["bombs"]
-    explosions=state["explosions"]
-    crates=state["crates"]
-    walls=state["walls"]
-    position=state["self_info"]["position"]
-    coins=state["coins"]
-
-    state_representation_list=[]
-    (x,y)=(0,0)
-    limit_x=16
-    limit_y=16
-    for i in range(1,limit_x):
-         for j in range(1,limit_y):
-                if(position[i,j]==1):
-                        (x,y)=(i,j)
- 
-    window_length=15
-    for i in range(x - window_length, x + window_length+1):
-           for j in range(y - window_length, y + window_length+1):
-               distanz = abs(i - x) + abs(j - y)  
-               if distanz < window_length:
-                   if i>=0 and i<limit_x and j>=0 and j<limit_y:
-                       if(walls[i,j]==1):
-                           state_representation_list.append(1)
-              
-                       else:
-                             state_representation_list.append(0)
-                              
-                   else:
-                        state_representation_list.append(1)
-
-  
-    for i in range(x - window_length, x + window_length+1):
-           for j in range(y - window_length, y + window_length+1):
-               distanz = abs(i - x) + abs(j - y)  
-               if distanz < window_length:
-                   if i>=0 and i<limit_x and j>=0 and j<limit_y:
-                       if(coins[i,j]==1):
-                           state_representation_list.append(1)
-              
-                       else:
-                             state_representation_list.append(0)
-                              
-                   else:
-                        state_representation_list.append(1)
-
-
-    for i in range(x - window_length, x + window_length+1):
-           for j in range(y - window_length, y + window_length+1):
-               distanz = abs(i - x) + abs(j - y)  
-               if distanz < window_length:
-                   if i>=0 and i<limit_x and j>=0 and j<limit_y:
-                       if(opponents[i,j]==1):
-                           state_representation_list.append(1)
-              
-                       else:
-                             state_representation_list.append(0)
-                              
-                   else:
-                        state_representation_list.append(1)
-
-    for i in range(x - window_length, x + window_length+1):
-           for j in range(y - window_length, y + window_length+1):
-               distanz = abs(i - x) + abs(j - y)  
-               if distanz < window_length:
-                   if i>=0 and i<limit_x and j>=0 and j<limit_y:
-                       if(crates[i,j]==1):
-                           state_representation_list.append(1)
-              
-                       else:
-                             state_representation_list.append(0)
-                              
-                   else:
-                        state_representation_list.append(1)
-
-    
-
-   
-    timestamp_dead_marker=compute_timestamp_dead_marker(opponents,bombs,explosions,crates,walls)
-    time_limit_escape=6
-    window_length_bombs=6
-   
-    for t in range(1,time_limit_escape):
-        for pos1 in range(x - window_length_bombs+1, x + window_length_bombs):
-            for pos2 in range(y - window_length_bombs+1, y + window_length_bombs):
-                distanz = abs(pos1 - x) + abs(pos2 - y)  
-                if distanz <= t:
-                    if pos1>=0 and pos1<limit_x and pos2>=0 and pos2<limit_y:
-                       if timestamp_dead_marker[t,pos1,pos2]==1:
-                           state_representation_list.append(1)
-                       else:
-                            state_representation_list.append(0)
-                    else:
-                        state_representation_list.append(0)
-
-    for t in range(1,time_limit_escape):
-        for pos1 in range(x - window_length_bombs+1, x + window_length_bombs):
-            for pos2 in range(y - window_length_bombs+1, y + window_length_bombs):
-                distanz = abs(pos1 - x) + abs(pos2 - y)  
-                if distanz <= t:
-                    if pos1>=0 and pos1<limit_x and pos2>=0 and pos2<limit_y:
-                        if timestamp_dead_marker[t,pos1,pos2]>1:
-                            state_representation_list.append(1)
-                        else:
-                            state_representation_list.append(0)
-                    else:
-                        state_representation_list.append(0)
-
-
-                        
-    if timestamp_dead_marker[0,x,y]==1 or timestamp_dead_marker[0,x,y]==4:
-         state_representation_list.append(1)
-    else:
-         state_representation_list.append(0)
-
-
-    timestamp_dead_marker=compute_timestamp_dead_marker_with_extra_bomb(opponents,bombs,explosions,crates,walls,x,y)
-     
-    time_limit_escape=5
-    window_length_bombs=5
-
-    for t in range(1,time_limit_escape):
-        for pos1 in range(x - window_length_bombs+1, x + window_length_bombs):
-            for pos2 in range(y - window_length_bombs+1, y + window_length_bombs):
-                distanz = abs(pos1 - x) + abs(pos2 - y)  
-                if distanz <= t:
-                    if pos1>=0 and pos1<limit_x and pos2>=0 and pos2<limit_y:
-                       if timestamp_dead_marker[t,pos1,pos2]==1:
-                           state_representation_list.append(1)
-                       else:
-                            state_representation_list.append(0)
-                    else:
-                        state_representation_list.append(0)
-
-    for t in range(1,time_limit_escape):
-        for pos1 in range(x - window_length_bombs+1, x + window_length_bombs):
-            for pos2 in range(y - window_length_bombs+1, y + window_length_bombs):
-                distanz = abs(pos1 - x) + abs(pos2 - y)  
-                if distanz <= t:
-                    if pos1>=0 and pos1<limit_x and pos2>=0 and pos2<limit_y:
-                        if timestamp_dead_marker[t,pos1,pos2]>1:
-                            state_representation_list.append(1)
-                        else:
-                            state_representation_list.append(0)
-                    else:
-                        state_representation_list.append(0)
-
-
-    if timestamp_dead_marker[0,x,y]==1 or timestamp_dead_marker[0,x,y]==4:
-         state_representation_list.append(1)
-    else:
-         state_representation_list.append(0)
-  
-    state_representation_list.append(state["self_info"]["bombs_left"])
-
-
-
-
-    return state_representation_list
 
 
 
@@ -530,50 +135,9 @@ device = torch.device(
     "cpu"
 )
 
-class BaseActor(nn.Module):
-    def __init__(self, state_size, action_size):
-        super().__init__()
-        self.state_size = state_size
-        self.action_size = action_size
-
-        self.gate = nn.ReLU()
-        self.net = nn.Sequential(
-            nn.Linear(state_size, int(state_size/2)), self.gate,
-            nn.Linear(int(state_size/2), int(state_size/4)), self.gate,
-            nn.Linear(int(state_size/4), action_size),
-          
-        )
-
-    def forward(self, state):
-        return self.net(state)
-
-    def forward_with_softmax(self, state):
-        return torch.softmax(self.net(state), dim=-1)
-    
-    def get_action(self, prob):
-        dist = distributions.Categorical(prob)
-        action = dist.sample()
-        return action
-    
-    def get_best_action(self, prob):
-        _, indices = prob.max(dim=1)
-        return indices
-
-    def eval_action(self, prob, action):
-        dist = distributions.Categorical(prob)
-        return {
-            "log_prob": dist.log_prob(action),
-            "entropy": dist.entropy()
-        }
 
 
-def compute(states, actions,actor,critic):
-        logit = {"p": actor(states), "v": critic(states)}
-        cur_values = logit["v"]
-        x = actor.eval_action(logit["p"], actions.squeeze())
-        cur_log_probs = x["log_prob"]
-        entropy = x["entropy"]
-        return cur_values.squeeze(), cur_log_probs.squeeze(), entropy
+
 
 def act_net(policy_net,state):
     out=policy_net(state)
@@ -842,11 +406,11 @@ def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memo
        #target_x,target_y,distanz,coin?
             if expert.target_coin==True:
 
-                if net_action==expert_action:
+                if net_action==expert_action and expert.target_distanz<=15:
                      events_replay_memory_list[STEPPED_TOWARDS_COIN_POS][0].push(state,expert_action)
                      events_replay_memory_list[STEPPED_TOWARDS_COIN_POS][1]= events_replay_memory_list[STEPPED_TOWARDS_COIN_POS][1]+1
                      events_replay_memory_list_mini[STEPPED_TOWARDS_COIN_POS][0].push(state,expert_action)
-                else:
+                elif net_action!=expert_action and expert.target_distanz<=15:
                      events_replay_memory_list[STEPPED_TOWARDS_COIN_NEG][0].push(state,expert_action)
                      events_replay_memory_list[STEPPED_TOWARDS_COIN_NEG][1]= events_replay_memory_list[STEPPED_TOWARDS_COIN_NEG][1]+1
                      events_replay_memory_list_mini[STEPPED_TOWARDS_COIN_NEG][0].push(state,expert_action)
@@ -867,11 +431,11 @@ def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memo
                          events_replay_memory_list_mini[SHOULD_HAVE_PLANTED_BOMB][0].push(state,expert_action)
 
                 else:
-                     if net_action==expert_action:
+                     if  net_action==expert_action and expert.target_distanz<=15:
                          events_replay_memory_list[STEPPED_TOWARDS_TARGET_POS][0].push(state,expert_action)
                          events_replay_memory_list[STEPPED_TOWARDS_TARGET_POS][1]= events_replay_memory_list[STEPPED_TOWARDS_TARGET_POS][1]+1
                          events_replay_memory_list_mini[STEPPED_TOWARDS_TARGET_POS][0].push(state,expert_action)
-                     else:
+                     elif net_action!=expert_action and expert.target_distanz<=15:
                          events_replay_memory_list[STEPPED_TOWARDS_TARGET_NEG][0].push(state,expert_action)
                          events_replay_memory_list[STEPPED_TOWARDS_TARGET_NEG][1]= events_replay_memory_list[STEPPED_TOWARDS_TARGET_NEG][1]+1
                          events_replay_memory_list_mini[STEPPED_TOWARDS_TARGET_NEG][0].push(state,expert_action)
@@ -911,7 +475,7 @@ def evaluate_net_action(state,net_action,expert_action,expert,events_replay_memo
        
                
 
-def loop(env,policy_net,optimizer,criterion, n_episodes=500):
+def loop(env,policy_net,optimizer,criterion, n_episodes=2000):
    
     expert=Expert_Agent()
     #supervised_events=[BOMB_ESCAPE_LENGTH_ONE_POS,BOMB_ESCAPE_LENGTH_TWO_POS,BOMB_ESCAPE_LENGTH_THREE_POS,BOMB_ESCAPE_LENGTH_FOUR_POS,STEPPED_TOWARDS_TARGET_POS,CAN_ESCAPE_OWN_BOMB_POS]
@@ -923,10 +487,10 @@ def loop(env,policy_net,optimizer,criterion, n_episodes=500):
     events_replay_memory_list=dict([(BOMB_ESCAPE_LENGTH_ONE_POS,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_ONE_NEG,[ReplayMemory(1000),0])
                             ,(BOMB_ESCAPE_LENGTH_TWO_POS,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_TWO_NEG,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_THREE_POS,[ReplayMemory(1000),0])
                             ,(BOMB_ESCAPE_LENGTH_THREE_NEG,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_FOUR_POS,[ReplayMemory(500),0]),(BOMB_ESCAPE_LENGTH_FOUR_NEG,[ReplayMemory(500),0])
-                            ,(STEPPED_IN_BLOCKED_FIELD,[ReplayMemory(1000),0]),(STEPPED_TOWARDS_TARGET_POS,[ReplayMemory(2000),0])
-                            ,(STEPPED_TOWARDS_TARGET_NEG,[ReplayMemory(2000),0]),(STEPPED_TOWARDS_COIN_POS,[ReplayMemory(2000),0]),(STEPPED_TOWARDS_COIN_NEG,[ReplayMemory(2000),0])
+                            ,(STEPPED_IN_BLOCKED_FIELD,[ReplayMemory(1000),0]),(STEPPED_TOWARDS_TARGET_POS,[ReplayMemory(4000),0])
+                            ,(STEPPED_TOWARDS_TARGET_NEG,[ReplayMemory(4000),0]),(STEPPED_TOWARDS_COIN_POS,[ReplayMemory(3000),0]),(STEPPED_TOWARDS_COIN_NEG,[ReplayMemory(3000),0])
                             ,(Target_IN_RANGE_NEG,[ReplayMemory(1000),0]),(Target_IN_RANGE_POS,[ReplayMemory(1000),0])
-                            ,(CAN_ESCAPE_OWN_BOMB_NEG,[ReplayMemory(2000),0]),(CAN_ESCAPE_OWN_BOMB_POS,[ReplayMemory(2000),0])
+                            ,(CAN_ESCAPE_OWN_BOMB_NEG,[ReplayMemory(1000),0]),(CAN_ESCAPE_OWN_BOMB_POS,[ReplayMemory(1000),0])
                             ,(PLANTED_WITHOUT_BOMBS_LEFT,[ReplayMemory(500),0]),(SHOULD_HAVE_PLANTED_BOMB,[ReplayMemory(500),0])
                             ])
     events_replay_memory_list_mini_push=dict([(BOMB_ESCAPE_LENGTH_ONE_POS,[ReplayMemory(1000),0]),(BOMB_ESCAPE_LENGTH_ONE_NEG,[ReplayMemory(1000),0])
@@ -949,13 +513,18 @@ def loop(env,policy_net,optimizer,criterion, n_episodes=500):
                             ,(PLANTED_WITHOUT_BOMBS_LEFT,[ReplayMemory(500),0]),(SHOULD_HAVE_PLANTED_BOMB,[ReplayMemory(500),0])
                             ])
     batch_sizes=[20 for i in range(0,19)]
-
     cnt_steps=0
-    epsiodes_to_reconfigurate_batch=30
-    epsilon=0.5
+    epsiodes_to_reconfigurate_batch=40
+    eps_decay=n_episodes/epsiodes_to_reconfigurate_batch
+    eps_start=0.5
+    eps_end=0
+    steps=0
+    epsilon=eps_end+eps_start*((eps_decay-steps)/(eps_decay))
     cnt_epsiodes=0
     first_episodes=0
     train_every_x_steps=20
+   
+
     for i in range(n_episodes):
         state, info = env.reset()
         terminated, truncated, quit = False, False, False
@@ -978,6 +547,9 @@ def loop(env,policy_net,optimizer,criterion, n_episodes=500):
             evaluate_net_action(state,action,expert_action,expert,events_replay_memory_list,events_replay_memory_list_mini_push)
 
             if cnt_epsiodes==epsiodes_to_reconfigurate_batch:
+                steps+=1
+                epsilon=eps_end+eps_start*((eps_decay-steps)/(eps_decay))
+                print(f"Epsilon: {epsilon}")
                 configurate_batch_sizes(events_replay_memory_list,batch_sizes)
                 cnt_epsiodes=0
                 events_replay_memory_list_mini_sample=events_replay_memory_list_mini_push
@@ -1054,7 +626,7 @@ def train_supervised(policy_net,optimizer,replay_memories,criterion,max_steps=10
 
         print(f"Epoch {training_steps}: Loss={loss.item():.4f}, Acc={acc:.4f}")
 
-        torch.save(policy_net.state_dict(), Path(__file__).parent / "model_supervised_training_by_file.pt")
+    torch.save(policy_net.state_dict(), Path(__file__).parent / "model_supervised_training_by_file.pt")
 
 def main(argv=None):
    
