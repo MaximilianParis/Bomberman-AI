@@ -247,7 +247,7 @@ def Transform_State(state):
     walls=state["walls"]
     position=state["self_info"]["position"]
     coins=state["coins"]
-
+   
     state_representation_list=[]
     (x,y)=(0,0)
     limit_x=16
@@ -256,65 +256,38 @@ def Transform_State(state):
          for j in range(1,limit_y):
                 if(position[i,j]==1):
                         (x,y)=(i,j)
- 
+
+    grid = np.zeros((4,31,31))
+    grid[0]=np.ones((31,31))
     window_length=15
+    offset_x=x - window_length
+    offset_y=y - window_length
+
+    
     for i in range(x - window_length, x + window_length+1):
            for j in range(y - window_length, y + window_length+1):
                distanz = abs(i - x) + abs(j - y)  
-               if distanz < window_length:
-                   if i>=0 and i<limit_x and j>=0 and j<limit_y:
-                       if(walls[i,j]==1):
-                           state_representation_list.append(1)
-              
-                       else:
-                             state_representation_list.append(0)
-                              
-                   else:
-                        state_representation_list.append(1)
+              # if distanz < window_length:
+               if i>=0 and i<limit_x and j>=0 and j<limit_y:
+                  if(walls[i,j]==0):
+                       grid[0][i-offset_x][j-offset_y]=0
 
-  
-    for i in range(x - window_length, x + window_length+1):
-           for j in range(y - window_length, y + window_length+1):
-               distanz = abs(i - x) + abs(j - y)  
-               if distanz < window_length:
-                   if i>=0 and i<limit_x and j>=0 and j<limit_y:
-                       if(coins[i,j]==1):
-                           state_representation_list.append(1)
+                  if(coins[i,j]==1):
+                       grid[1][i-offset_x][j-offset_y]=1
+                       
+                  if(opponents[i,j]==1):
+                       grid[2][i-offset_x][j-offset_y]=1
+                       
+                  if(crates[i,j]==1):
+                       grid[3][i-offset_x][j-offset_y]=1
+                          # state_representation_list.append(1)
               
-                       else:
-                             state_representation_list.append(0)
+                       #else:
+                             #state_representation_list.append(0)
                               
-                   else:
-                        state_representation_list.append(1)
+                  # else:
+                        #state_representation_list.append(1)
 
-
-    for i in range(x - window_length, x + window_length+1):
-           for j in range(y - window_length, y + window_length+1):
-               distanz = abs(i - x) + abs(j - y)  
-               if distanz < window_length:
-                   if i>=0 and i<limit_x and j>=0 and j<limit_y:
-                       if(opponents[i,j]==1):
-                           state_representation_list.append(1)
-              
-                       else:
-                             state_representation_list.append(0)
-                              
-                   else:
-                        state_representation_list.append(1)
-
-    for i in range(x - window_length, x + window_length+1):
-           for j in range(y - window_length, y + window_length+1):
-               distanz = abs(i - x) + abs(j - y)  
-               if distanz < window_length:
-                   if i>=0 and i<limit_x and j>=0 and j<limit_y:
-                       if(crates[i,j]==1):
-                           state_representation_list.append(1)
-              
-                       else:
-                             state_representation_list.append(0)
-                              
-                   else:
-                        state_representation_list.append(1)
 
     
 
@@ -399,4 +372,4 @@ def Transform_State(state):
 
 
 
-    return state_representation_list
+    return [grid,state_representation_list]

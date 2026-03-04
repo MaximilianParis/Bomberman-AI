@@ -151,7 +151,8 @@ def train(policy_net,optimizer,replay_memories,replay_memories_mini,batch_sizes,
      
     for training_steps in range(0,max_steps):
        
-        states_list=[]
+        states_list_grid=[]
+        states_list_rest=[]
         actions_list=[]
         cnt=0
         for replay_mem in replay_memories.items():
@@ -164,15 +165,24 @@ def train(policy_net,optimizer,replay_memories,replay_memories_mini,batch_sizes,
                 sampled_states.extend(sampled_states_mini)
                 sampled_actions.extend(sampled_actions_mini)
                 sampled_states=[Transform_State(state) for state in sampled_states]
+
+
+                sampled_states_grid=[state[0] for state in sampled_states]
+                sampled_states_grid=np.array(sampled_states_grid)
+                sampled_states_rest=[state[1] for state in sampled_states]
+                sampled_states_rest=np.array(sampled_states_rest)
            
-                states_list.append(torch.tensor(sampled_states, dtype=torch.float32).to(device))
+                states_list_grid.append(torch.tensor(sampled_states_grid, dtype=torch.float32).to(device))
+                states_list_rest.append(torch.tensor(sampled_states_rest, dtype=torch.float32).to(device))
+           
                 actions_list.append(torch.tensor(sampled_actions, dtype=torch.long).to(device))
             cnt+=1
                     
         policy_net.train()
-        states_tensor=torch.cat(states_list)
+        states_tensor_grid=torch.cat(states_list_grid)
+        states_tensor_rest=torch.cat(states_list_rest)
         actions_tensor=torch.cat(actions_list)
-        logits = policy_net(states_tensor)
+        logits = policy_net(states_tensor_grid,states_tensor_rest)
 
         loss = criterion(logits, actions_tensor)
 
@@ -533,10 +543,15 @@ def loop(env,policy_net,optimizer,criterion, n_episodes=2000):
         first_episodes+=1
         while not (terminated or truncated):
             cnt_steps+=1
-            transformed_state=torch.tensor(Transform_State(state),dtype=torch.float32).to(device)
+            transformed_state=Transform_State(state)
+            ten_transformed_state_grid=torch.tensor(transformed_state[0],dtype=torch.float32).to(device)
+            ten_transformed_state_rest=torch.tensor(transformed_state[1],dtype=torch.float32).to(device)
 
-            net_action = act_net(policy_net,transformed_state)
+            ten_transformed_state_grid=ten_transformed_state_grid.unsqueeze(0)
+            ten_transformed_state_rest=ten_transformed_state_rest.unsqueeze(0)
 
+            net_action = policy_net.get_best_action(ten_transformed_state_grid,ten_transformed_state_rest)
+            net_action=net_action.squeeze(0).item()
             expert_action=action=expert.act(state)
 
             if random.random()>epsilon:
@@ -587,20 +602,24 @@ def train_supervised(policy_net,optimizer,replay_memories,criterion,max_steps=10
                    CAN_ESCAPE_OWN_BOMB_POS]
     for training_steps in range(0,max_steps):
        
-        states_list=[]
+        states_list_grid=[]
+        states_list_rest=[]
         actions_list=[]
         cnt=0
         for replay_mem in replay_memories:
             sampled_states,sampled_actions = replay_mem.sample()
             sampled_states=[Transform_State(state) for state in sampled_states]
+            sampled_states_grid=[state[0] for state in sampled_states]
+            sampled_states_rest=[state[1] for state in sampled_states]
            
-            states_list.append(torch.tensor(sampled_states, dtype=torch.float32).to(device))
+            states_list_grid.append(torch.tensor(sampled_states_grid, dtype=torch.float32).to(device))
+            states_list_rest.append(torch.tensor(sampled_states_rest, dtype=torch.float32).to(device))
             actions_list.append(torch.tensor(sampled_actions, dtype=torch.long).to(device))
 
            
             policy_net.eval()
             with torch.no_grad():
-                preds = torch.argmax(policy_net(states_list[cnt]), dim=1)
+                preds = torch.argmax(policy_net(states_list_grid[cnt],states_list_rest[cnt]), dim=1)
                 acc = (preds == actions_list[cnt]).float().mean()
 
             print(f"Kategorie: {supervised_events[cnt]}:  Acc={acc:.4f}")
@@ -609,9 +628,10 @@ def train_supervised(policy_net,optimizer,replay_memories,criterion,max_steps=10
 
                     
         policy_net.train()
-        states_tensor=torch.cat(states_list)
+        states_tensor_grid=torch.cat(states_list_grid)
+        states_tensor_rest=torch.cat(states_list_rest)
         actions_tensor=torch.cat(actions_list)
-        logits = policy_net(states_tensor)
+        logits = policy_net(states_tensor_grid,states_tensor_rest)
 
         loss = criterion(logits, actions_tensor)
 
@@ -632,7 +652,7 @@ def main(argv=None):
    
     args = parse(argv)
     replay_memories=[]
-    policy_net = BaseActor(2145, 6).to(device)
+    policy_net = BaseActor(4096, 461,6).to(device)
     optimizer = optim.AdamW(policy_net.parameters(), lr=1e-3, amsgrad=True)
     criterion = nn.CrossEntropyLoss()
     if args.init_supervised_with_file=='True':
