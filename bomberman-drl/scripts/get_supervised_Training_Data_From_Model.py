@@ -36,12 +36,22 @@ def loop(env, policy_net, args, n_episodes=1000):
         while not (terminated or truncated):
 
             transformed_state=Transform_State(state)
-            with torch.no_grad():
-                 prob=policy_net.forward_with_softmax(transformed_state)
+            ten_transformed_state_grid=torch.tensor(transformed_state[0],dtype=torch.float32).to(device)
+            ten_transformed_state_rest=torch.tensor(transformed_state[1],dtype=torch.float32).to(device)
 
-            action=policy_net.get_best_action(prob)
+            ten_transformed_state_grid=ten_transformed_state_grid.unsqueeze(0)
+            ten_transformed_state_rest=ten_transformed_state_rest.unsqueeze(0)
+
+            net_action = policy_net.get_best_action(ten_transformed_state_grid,ten_transformed_state_rest)
+            net_action=net_action.squeeze(0).item()
+            #with torch.no_grad():
+            #     prob=policy_net.forward_with_softmax(transformed_state)
+
+           # action=policy_net.get_best_action(prob)
 
             states_list.append(transformed_state)
+
+            new_state, _, terminated, truncated, info = env.step(net_action)
            
             if(new_state is not None):
                 reward_list.append(new_state["self_info"]["score"]-state["self_info"]["score"])
@@ -49,7 +59,7 @@ def loop(env, policy_net, args, n_episodes=1000):
                 reward_list.append(-5)
 
                       
-            new_state, _, terminated, truncated, info = env.step(action)
+            
                         
             state = new_state 
         print(i)
@@ -71,7 +81,7 @@ def main(argv=None):
     env = gymnasium.make("bomberman_rl/bomberman-v0", args=args)
     env = ScoreRewardWrapper(env)
 
-    policy_net = BaseActor(2145, 6).to(device)
+    policy_net = BaseActor(4096, 461,6).to(device)
 
     policy_net.load_state_dict(torch.load( Path(__file__).parent / "model_supervised.pt"))
     
