@@ -44,6 +44,20 @@ def random_sublist(lst, k):
             j = n - k
         return (states[j:j+k], actions[j:j+k], log_probs[j:j+k], returns[j:j+k], rewards[j:j+k])
 
+
+def vtrace(values, returns, rewards, gamma, rhos, cs, lmbd):
+    v_t_plus_1 = np.concatenate((values[1:], returns[-1:]))
+    deltas = rhos * (rewards + gamma * v_t_plus_1 - values)
+    vs_minus_v_xs = deque([deltas[-1]])
+    for i in range(len(values) - 2, -1, -1):
+        vs_minus_v_xs.appendleft(deltas[i] + gamma * lmbd * cs[i] * vs_minus_v_xs[0])
+
+    vs = np.array(vs_minus_v_xs) + np.array(values)
+    vs_t_plus_1 = np.concatenate((vs[1:], returns[-1:]))
+    advantages = rewards + gamma * vs_t_plus_1 - values
+
+    return vs, advantages
+
 class ReplayMemory(object):
 
     def __init__(self, capacity):
@@ -54,7 +68,7 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
-    def add(self,states,actions,log_probs,rewards,unroll_length):
+    def add(self,states,actions,log_probs,rewards):
         
             returns = _compute_returns(rewards,0.99)
             key=random.random()
@@ -71,7 +85,8 @@ class ReplayMemory(object):
         
     def sample(self,batch_size,actor,critic,unroll_length):
         total_sample = 0
-        t_states = []
+        t_states_grid = []
+        t_states_rest = []
         t_actions = []
         t_log_probs = []
         t_vs = []
@@ -95,21 +110,34 @@ class ReplayMemory(object):
 
             states, actions, log_probs, returns, rewards = experiences
 
+            states_grid=[st[0] for st in states]
+            states_grid=np.array(states_grid)
+            states_rest=[st[1] for st in states]
+            states_rest=np.array(states_rest)
+
+            t_states_grid_cur=torch.tensor(states_grid, dtype=torch.float32).to(device)
+            t_states_rest_cur=torch.tensor(states_rest, dtype=torch.float32).to(device)
+            t_actions_cur=torch.tensor(actions, dtype=torch.float32).to(device)
+            t_log_probs_cur=torch.tensor(log_probs, dtype=torch.float32).to(device)
+            
+
             total_sample += 1
 
            #nicht volle Epsioden nehmen
             with torch.no_grad():
-                eval_mode(actor,critic)
-                cur_values, cur_log_probs, _ = compute(
-                    torch.Tensor(states).to(device),
-                    torch.Tensor(actions).to(device),
-                    actor,critic
+                actor.eval()
+                critic.eval()
+                cur_values=critic(t_states_grid_cur,t_states_rest_cur)
+                porbs_cur=actor.forward_with_softmax(t_states_grid_cur, t_states_rest_cur)
+                cur_log_probs,_ = actor.eval_action(
+                    porbs_cur,t_actions_cur
                 )
-                train_mode(actor,critic)
+                actor.train()
+                critic.train()
 
-            cur_values = cur_values.cpu().detach().numpy()
+            cur_values = cur_values.squeeze(-1).cpu().detach().numpy()
             cur_log_probs = cur_log_probs.cpu().detach().numpy()
-
+            
             unclipped_rhos = np.exp(cur_log_probs - np.squeeze(np.array(log_probs)))
             rhos = np.clip(unclipped_rhos, 0.0, 1.0)
             cs = np.clip(unclipped_rhos, 0.0, 1.0)
@@ -124,15 +152,14 @@ class ReplayMemory(object):
                 lmbd=1
             )
 
-            states = torch.Tensor(states).to(device)
-            actions = torch.Tensor(actions).to(device)
-            log_probs = torch.Tensor(log_probs).to(device)
-            vs = torch.Tensor(vs).to(device)
-            advantages = torch.Tensor(advantages).to(device)
-            log_probs = torch.squeeze(log_probs)
-            t_states.append(states)
-            t_actions.append(actions)
-            t_log_probs.append(log_probs)
+            vs=torch.tensor(vs, dtype=torch.float32).to(device)
+            advantages=torch.tensor(advantages, dtype=torch.float32).to(device)
+            
+           
+            t_states_grid.append(t_states_grid_cur)
+            t_states_rest.append(t_states_rest_cur)
+            t_actions.append(t_actions_cur)
+            t_log_probs.append(t_log_probs_cur)
             t_vs.append(vs)
             t_advantages.append(advantages)
 
@@ -140,23 +167,94 @@ class ReplayMemory(object):
 
       
 
-        return t_states, t_actions, t_log_probs, t_vs, t_advantages
+        return t_states_grid,t_states_rest, t_actions, t_log_probs, t_vs, t_advantages
 
 
-def loop(env,policy_net,citic,optimizer_policy_net,optimizer_citic, n_episodes=2000):
+
+def train(minibatch,clip,entropy_regularization,actor,actor_optim,critic,critic_optim,max_grad_norm):
+        """
+        Proximal Policy Optimization
+        Pseudocode: https://spinningup.openai.com/en/latest/algorithms/ppo.html
+        """
+        states_grid, states_rest, actions, log_probs, vs, advantages = minibatch
+
+        # Normalize advantages is a good idea?
+        # https://costa.sh/blog-the-32-implementation-details-of-ppo.html
+       
+        states_grid=torch.cat(states_grid)
+        states_rest=torch.cat(states_rest)
+        actions=torch.cat(actions)
+        log_probs=torch.cat(log_probs)
+        vs=torch.cat(vs)
+        advantages=torch.cat(advantages)
+
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
+
+        
+
+        for _ in range(1):
+
+            cur_values=critic(states_grid,states_rest)
+            cur_log_probs,entropy = actor.eval_action(
+                    actor.forward_with_softmax(states_grid, states_rest),actions
+                )
+            
+            #cur_log_probs=cur_log_probs.squeeze(-1)
+            #entropy=entropy.squeeze(-1)
+            cur_values=cur_values.squeeze(-1)
+            # Compute the policy loss
+            ratios = torch.exp(cur_log_probs - log_probs)
+            surrogate_loss1 = ratios * advantages
+            surrogate_loss2 = (
+                torch.clamp(ratios, 1.0 - clip, 1.0 + clip) * advantages
+            )
+            actor_loss = torch.min(surrogate_loss1, surrogate_loss2)
+
+            # Optimize the policy loss along with the entropy term to encourage exploration
+            actor_loss = actor_loss + entropy_regularization * entropy
+            actor_loss = actor_loss.mean()
+            actor_loss = -actor_loss
+
+            # MSE loss
+            critic_loss = nn.MSELoss()
+            critic_loss=critic_loss(cur_values, vs)
+
+           
+            actor_optim.zero_grad()
+            actor_loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                actor.parameters(), max_grad_norm
+            )
+            actor_optim.step()
+
+            critic_optim.zero_grad()
+            critic_loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                critic.parameters(), max_grad_norm
+            )
+            critic_optim.step()
+
+def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes=2000):
    
    
     cnt_steps=0
     cnt_epsiodes=0
     train_every_x_steps=20
-    do_not_train_first_x_episodes=30
-
+    do_not_train_first_x_episodes=20
+    replay_mem=ReplayMemory(2000)
+    avg_return=0
+    print_stats_every=30
+    cnt_stats=0
     for i in range(n_episodes):
         state, info = env.reset()
         terminated, truncated, quit = False, False, False
-        
+        cnt_stats+=1
         cnt_epsiodes+=1
-      
+        states=[]
+        actions=[]
+        log_probs=[]
+        rewards=[]
+        cur_return=0
         while not (terminated or truncated):
             cnt_steps+=1
             transformed_state=Transform_State(state)
@@ -166,22 +264,40 @@ def loop(env,policy_net,citic,optimizer_policy_net,optimizer_citic, n_episodes=2
             ten_transformed_state_grid=ten_transformed_state_grid.unsqueeze(0)
             ten_transformed_state_rest=ten_transformed_state_rest.unsqueeze(0)
 
-            net_action = policy_net.get_best_action(ten_transformed_state_grid,ten_transformed_state_rest)
+            net_action,prob = policy_net.get_action(ten_transformed_state_grid,ten_transformed_state_rest)
             net_action=net_action.squeeze(0).item()
+            prob=prob.squeeze(0).item()
           
             new_state, _, terminated, truncated, info = env.step(net_action)
-                     
+
+            states.append(transformed_state)
+            actions.append(net_action)
+            log_probs.append(prob)
+            if(new_state is not None):
+                rewards.append(new_state["self_info"]["score"]-state["self_info"]["score"])
+                cur_return+=new_state["self_info"]["score"]-state["self_info"]["score"]
+            else:
+                rewards.append(-5)
+                cur_return-=5
            
 
             if cnt_epsiodes>=do_not_train_first_x_episodes and train_every_x_steps<=cnt_steps:
-               train(policy_net,optimizer,events_replay_memory_list,events_replay_memory_list_mini_sample,batch_sizes,criterion)
+               minibatch=replay_mem.sample(40,policy_net,critic,20)
+               train(minibatch,0.2,0.0001,policy_net,optimizer_policy_net,critic,optimizer_critic,1000)
                cnt_steps=0
                
-
+                
             state = new_state 
 
+        replay_mem.add(states,actions,log_probs,rewards)
+        avg_return+=cur_return
+        if cnt_stats==print_stats_every:
+            print(f"Episode: {i+1} AVG_Return: {avg_return/print_stats_every}")
+            avg_return=0
+            cnt_stats=0
         #print(cnt_epsiodes)
-    torch.save(policy_net.state_dict(), Path(__file__).parent / "model_supervised.pt")    
+    torch.save(policy_net.state_dict(), Path(__file__).parent / "model_rl.pt")    
+    torch.save(critic.state_dict(), Path(__file__).parent / "model_rl_value_function.pt")   
 
 
 def main(argv=None):
@@ -191,17 +307,17 @@ def main(argv=None):
     policy_net = BaseActor(4096, 461,6).to(device)
     optimizer_policy_net = optim.AdamW(policy_net.parameters(), lr=3e-4, amsgrad=True)
      
-    citic = BaseCritic(4096, 461,6).to(device)
-    optimizer_citic = optim.AdamW(citic.parameters(), lr=3e-4, amsgrad=True)
+    critic = BaseCritic(4096, 461,6).to(device)
+    optimizer_critic = optim.AdamW(critic.parameters(), lr=3e-4, amsgrad=True)
     
     policy_net.load_state_dict(torch.load( Path(__file__).parent / "model_supervised.pt"))
-    citic.load_state_dict(torch.load( Path(__file__).parent / "model_supervised_value_function.pt"))
+    critic.load_state_dict(torch.load( Path(__file__).parent / "model_supervised_value_function.pt"))
          
     env = gymnasium.make("bomberman_rl/bomberman-v0", args=args)
   
     env = ScoreRewardWrapper(env)
    
-    loop(env,policy_net,citic,optimizer_policy_net,optimizer_citic)
+    loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic)
 
 
 

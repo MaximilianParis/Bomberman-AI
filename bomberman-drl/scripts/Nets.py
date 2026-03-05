@@ -43,10 +43,11 @@ class BaseActor(nn.Module):
       
         return torch.softmax(self.forward(grid,rest), dim=-1)
     
-    def get_action(self, prob):
+    def get_action(self, grid, rest):
+        prob= self.forward_with_softmax( grid, rest)
         dist = distributions.Categorical(prob)
         action = dist.sample()
-        return action
+        return action,dist.log_prob(action)
     
     def get_best_action(self,  grid, rest):
         prob= self.forward_with_softmax( grid, rest)
@@ -55,10 +56,8 @@ class BaseActor(nn.Module):
 
     def eval_action(self, prob, action):
         dist = distributions.Categorical(prob)
-        return {
-            "log_prob": dist.log_prob(action),
-            "entropy": dist.entropy()
-        }
+        return dist.log_prob(action), dist.entropy()
+       
 
 class BaseCritic(nn.Module):
     def __init__(self,conv_output_dim,rest_dim,action_size):
