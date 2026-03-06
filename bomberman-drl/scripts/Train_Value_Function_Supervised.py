@@ -139,13 +139,20 @@ def sample(batch_size,critic,target_critic,unroll_length,epsiodes):
             cur_values = cur_values.cpu().detach().numpy()
                         
             vs= vtrace_on_policy(cur_values, returns, rewards, gamma=0.99)
+
+           
+            if -5!=reward_list[-1]:
+                vs.append(-5)
+               
+            else:
+                t_states_grid_cur=torch.tensor(states_grid[0:len(states_grid)-1], dtype=torch.float32).to(device)
+                t_states_rest_cur=torch.tensor(states_rest[0:len(states_rest)-1], dtype=torch.float32).to(device)
+
             vs=np.array(vs)     
             
             vs = torch.tensor(vs,dtype=torch.float32).to(device)
             #vs=vs.unsqueeze(0)   
-            
-            t_states_grid_cur=torch.tensor(states_grid[0:len(states_grid)-1], dtype=torch.float32).to(device)
-            t_states_rest_cur=torch.tensor(states_rest[0:len(states_rest)-1], dtype=torch.float32).to(device)
+                       
             
 
             t_vs.append(vs)

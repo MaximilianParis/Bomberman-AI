@@ -28,11 +28,16 @@ def loop(env, policy_net, args, n_episodes=1000):
    
     episodes_list=[]
     policy_net.eval()
+    avg_return=0
+    print_stats_every=30
+    cnt_stats=0
     for i in range(n_episodes):
         state, info = env.reset()
         terminated, truncated, quit = False, False, False
         states_list=[]
         reward_list=[]
+        cur_return=0
+        cnt_stats+=1
         while not (terminated or truncated):
 
             transformed_state=Transform_State(state)
@@ -55,14 +60,17 @@ def loop(env, policy_net, args, n_episodes=1000):
            
             if(new_state is not None):
                 reward_list.append(new_state["self_info"]["score"]-state["self_info"]["score"])
+                cur_return+=new_state["self_info"]["score"]-state["self_info"]["score"]
             else:
-                reward_list.append(-5)
-
-                      
-            
-                        
+                cur_return-=5
+                                         
             state = new_state 
-        print(i)
+
+        avg_return+=cur_return
+        if cnt_stats==print_stats_every:
+            print(f"Episode: {i+1} AVG_Return: {avg_return/print_stats_every}")
+            avg_return=0
+            cnt_stats=0
         episodes_list.append([states_list,reward_list,_compute_returns(reward_list,0.99)])
 
            

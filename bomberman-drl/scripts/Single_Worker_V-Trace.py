@@ -33,27 +33,40 @@ def _compute_returns(rewards,gamma):
 
 
 def random_sublist(lst, k):
-        states, actions, log_probs, returns, rewards=lst
+        states, actions, log_probs, rewards=lst
         n = len(states)
         if n <= k:
-            return (states, actions, log_probs, returns, rewards)  # Sonderfall: Liste ist zu kurz, also ganze Liste zurueckgeben
+            return (states, actions, log_probs, rewards)  # Sonderfall: Liste ist zu kurz, also ganze Liste zurueckgeben
     
         # j wird so gewaehlt, dass die Sub-Liste von Laenge k in die Liste passt
         j = random.randint(0, n - 1)
         if j + k > n:  # wenn zu weit rechts, nach links schieben
             j = n - k
-        return (states[j:j+k], actions[j:j+k], log_probs[j:j+k], returns[j:j+k], rewards[j:j+k])
+        return (states[j:j+k], actions[j:j+k], log_probs[j:j+k], rewards[j:j+k])
 
 
-def vtrace(values, returns, rewards, gamma, rhos, cs, lmbd):
-    v_t_plus_1 = np.concatenate((values[1:], returns[-1:]))
+def vtrace(values, rewards, gamma, rhos, cs, lmbd):
+    v_t_plus_1 = values[1:]
+    deltas = rhos[:len(values)-1] * (rewards[:len(values)-1] + gamma * v_t_plus_1 - values[:len(values)-1])
+    vs_minus_v_xs = deque([deltas[-1]])
+    for i in range(len(v_t_plus_1) - 2, -1, -1):
+        vs_minus_v_xs.appendleft(deltas[i] + gamma * lmbd * cs[i] * vs_minus_v_xs[0])
+
+    vs = np.array(vs_minus_v_xs) + np.array(values[:len(values)-1])
+    vs_t_plus_1 = vs[1:]
+    advantages = rewards[:len(values)-2] + gamma * vs_t_plus_1 - values[:len(values)-2]
+
+    return vs[:len(vs)-1], advantages
+
+def vtrace_died(values, rewards, gamma, rhos, cs, lmbd):
+    v_t_plus_1 = np.concatenate((values[1:], [0]))
     deltas = rhos * (rewards + gamma * v_t_plus_1 - values)
     vs_minus_v_xs = deque([deltas[-1]])
     for i in range(len(values) - 2, -1, -1):
         vs_minus_v_xs.appendleft(deltas[i] + gamma * lmbd * cs[i] * vs_minus_v_xs[0])
 
     vs = np.array(vs_minus_v_xs) + np.array(values)
-    vs_t_plus_1 = np.concatenate((vs[1:], returns[-1:]))
+    vs_t_plus_1 = np.concatenate((vs[1:], [0]))
     advantages = rewards + gamma * vs_t_plus_1 - values
 
     return vs, advantages
@@ -70,10 +83,10 @@ class ReplayMemory(object):
 
     def add(self,states,actions,log_probs,rewards):
         
-            returns = _compute_returns(rewards,0.99)
+            #returns = _compute_returns(rewards,0.99)
             key=random.random()
                            
-            val=(states, actions, log_probs, returns, rewards)
+            val=(states, actions, log_probs, rewards)
 
             if self.maxlen>len(self.memory):
                 heapq.heappush(self.memory,(key,val))
@@ -105,10 +118,10 @@ class ReplayMemory(object):
 
           
             key,experiences = self.memory[idx_arr[idx]]
-            experiences=random_sublist(experiences,unroll_length)
+            experiences=random_sublist(experiences,unroll_length+2)
             idx += 1
 
-            states, actions, log_probs, returns, rewards = experiences
+            states, actions, log_probs, rewards = experiences
 
             states_grid=[st[0] for st in states]
             states_grid=np.array(states_grid)
@@ -118,12 +131,12 @@ class ReplayMemory(object):
             t_states_grid_cur=torch.tensor(states_grid, dtype=torch.float32).to(device)
             t_states_rest_cur=torch.tensor(states_rest, dtype=torch.float32).to(device)
             t_actions_cur=torch.tensor(actions, dtype=torch.float32).to(device)
-            t_log_probs_cur=torch.tensor(log_probs, dtype=torch.float32).to(device)
+               
             
 
             total_sample += 1
 
-           #nicht volle Epsioden nehmen
+            
             with torch.no_grad():
                 actor.eval()
                 critic.eval()
@@ -141,21 +154,44 @@ class ReplayMemory(object):
             unclipped_rhos = np.exp(cur_log_probs - np.squeeze(np.array(log_probs)))
             rhos = np.clip(unclipped_rhos, 0.0, 1.0)
             cs = np.clip(unclipped_rhos, 0.0, 1.0)
+            #Agent gestorben?
+            if rewards[-1]!=-5:
+                               
+                vs, advantages = vtrace(
+                    values=cur_values,
+                    
+                    rewards=rewards,
+                    gamma=0.99,
+                    rhos=rhos,
+                    cs=cs,
+                    lmbd=1
+                )
+                           
 
-            vs, advantages = vtrace(
-                values=cur_values,
-                returns=returns,
-                rewards=rewards,
-                gamma=0.99,
-                rhos=rhos,
-                cs=cs,
-                lmbd=1
-            )
+                t_states_grid_cur=torch.tensor(states_grid[:unroll_length], dtype=torch.float32).to(device)
+                t_states_rest_cur=torch.tensor(states_rest[:unroll_length], dtype=torch.float32).to(device)
+                t_actions_cur=torch.tensor(actions[:unroll_length], dtype=torch.float32).to(device)
+                t_log_probs_cur=torch.tensor(log_probs[:unroll_length], dtype=torch.float32).to(device)
+
+            else:
+
+                vs, advantages = vtrace_died(
+                    values=cur_values,
+                    
+                    rewards=rewards,
+                    gamma=0.99,
+                    rhos=rhos,
+                    cs=cs,
+                    lmbd=1
+                )
+                                           
+                t_log_probs_cur=torch.tensor(log_probs, dtype=torch.float32).to(device)
+
+
 
             vs=torch.tensor(vs, dtype=torch.float32).to(device)
             advantages=torch.tensor(advantages, dtype=torch.float32).to(device)
-            
-           
+
             t_states_grid.append(t_states_grid_cur)
             t_states_rest.append(t_states_rest_cur)
             t_actions.append(t_actions_cur)
@@ -178,8 +214,7 @@ def train(minibatch,clip,entropy_regularization,actor,actor_optim,critic,critic_
         """
         states_grid, states_rest, actions, log_probs, vs, advantages = minibatch
 
-        # Normalize advantages is a good idea?
-        # https://costa.sh/blog-the-32-implementation-details-of-ppo.html
+     
        
         states_grid=torch.cat(states_grid)
         states_rest=torch.cat(states_rest)
@@ -188,7 +223,7 @@ def train(minibatch,clip,entropy_regularization,actor,actor_optim,critic,critic_
         vs=torch.cat(vs)
         advantages=torch.cat(advantages)
 
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
+        #advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-10)
 
         
 
@@ -234,6 +269,13 @@ def train(minibatch,clip,entropy_regularization,actor,actor_optim,critic,critic_
             )
             critic_optim.step()
 
+        with torch.no_grad():
+            var_y = torch.var(vs)
+            explained_var = 1 - torch.var(vs - cur_values) / (var_y + 1e-8)
+                   
+      
+        return actor_loss.item(),critic_loss.item(),max(0,explained_var.item()),entropy.mean().item()
+
 def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes=2000):
    
    
@@ -241,9 +283,14 @@ def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes
     cnt_epsiodes=0
     train_every_x_steps=20
     do_not_train_first_x_episodes=20
-    replay_mem=ReplayMemory(2000)
+    replay_mem=ReplayMemory(500)
     avg_return=0
-    print_stats_every=30
+    avg_value_loss=0
+    avg_explained_var=0
+    avg_actor_loss=0
+    avg_entropy=0
+    cnt_trained_prior_to_print_stats=0
+    print_stats_every=50
     cnt_stats=0
     for i in range(n_episodes):
         state, info = env.reset()
@@ -264,9 +311,10 @@ def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes
             ten_transformed_state_grid=ten_transformed_state_grid.unsqueeze(0)
             ten_transformed_state_rest=ten_transformed_state_rest.unsqueeze(0)
 
-            net_action,prob = policy_net.get_action(ten_transformed_state_grid,ten_transformed_state_rest)
-            net_action=net_action.squeeze(0).item()
-            prob=prob.squeeze(0).item()
+            with torch.no_grad():
+                net_action,prob = policy_net.get_action(ten_transformed_state_grid,ten_transformed_state_rest)
+                net_action=net_action.squeeze(0).item()
+                prob=prob.squeeze(0).item()
           
             new_state, _, terminated, truncated, info = env.step(net_action)
 
@@ -282,9 +330,14 @@ def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes
            
 
             if cnt_epsiodes>=do_not_train_first_x_episodes and train_every_x_steps<=cnt_steps:
-               minibatch=replay_mem.sample(40,policy_net,critic,20)
-               train(minibatch,0.2,0.0001,policy_net,optimizer_policy_net,critic,optimizer_critic,1000)
+               minibatch=replay_mem.sample(64,policy_net,critic,30)
+               actor_loss,value_loss,explained_var,entropy=train(minibatch,0.2,0.0001,policy_net,optimizer_policy_net,critic,optimizer_critic,1000)
                cnt_steps=0
+               cnt_trained_prior_to_print_stats+=1
+               avg_value_loss+=value_loss
+               avg_explained_var+=explained_var
+               avg_actor_loss+=actor_loss
+               avg_entropy+=entropy
                
                 
             state = new_state 
@@ -292,9 +345,14 @@ def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes
         replay_mem.add(states,actions,log_probs,rewards)
         avg_return+=cur_return
         if cnt_stats==print_stats_every:
-            print(f"Episode: {i+1} AVG_Return: {avg_return/print_stats_every}")
+            print(f"Episode: {i+1} AVG_Return: {avg_return/print_stats_every} AVG_value_loss: {avg_value_loss/cnt_trained_prior_to_print_stats} AVG_explained_var: {avg_explained_var/cnt_trained_prior_to_print_stats} AVG_actor_loss: {avg_actor_loss/cnt_trained_prior_to_print_stats} AVG_entropy: {avg_entropy/cnt_trained_prior_to_print_stats}")
+            avg_value_loss=0
             avg_return=0
+            avg_explained_var=0
+            avg_actor_loss=0
+            avg_entropy=0
             cnt_stats=0
+            cnt_trained_prior_to_print_stats=0
         #print(cnt_epsiodes)
     torch.save(policy_net.state_dict(), Path(__file__).parent / "model_rl.pt")    
     torch.save(critic.state_dict(), Path(__file__).parent / "model_rl_value_function.pt")   
