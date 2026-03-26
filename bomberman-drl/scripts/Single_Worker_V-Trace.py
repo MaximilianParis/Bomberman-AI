@@ -657,7 +657,7 @@ def train(minibatch,minibatch_supervised,clip,entropy_regularization,actor,actor
       
         return actor_loss.item(),critic_loss.item(),max(0,explained_var.item()),entropy.mean().item()
 
-def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes=2000):
+def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes=3000):
     expert=Expert_Agent()
     events_replay_memory_list=dict([(BOMB_ESCAPE_LENGTH_ONE_POS,[Replay_Memory_Supervised(1000),0]),(BOMB_ESCAPE_LENGTH_ONE_NEG,[Replay_Memory_Supervised(1000),0])
                             ,(BOMB_ESCAPE_LENGTH_TWO_POS,[Replay_Memory_Supervised(1000),0]),(BOMB_ESCAPE_LENGTH_TWO_NEG,[Replay_Memory_Supervised(1000),0]),(BOMB_ESCAPE_LENGTH_THREE_POS,[Replay_Memory_Supervised(1000),0])
@@ -682,8 +682,9 @@ def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes
     print_stats_every=50
     cnt_stats=0
     entropy_regularization=0.0001
-    entropy_decay=0.994
+    entropy_decay=0.99
     batch_supervised_sizes=[10 for i in range(0,19)]
+    cur_max_avg_return=0
     for i in range(n_episodes):
         state, info = env.reset()
         terminated, truncated, quit = False, False, False
@@ -743,6 +744,10 @@ def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes
         replay_mem.add(states,actions,log_probs,rewards)
         avg_return+=cur_return
         if cnt_stats==print_stats_every:
+            if cur_max_avg_return<avg_return:
+                cur_max_avg_return=avg_return
+                torch.save(policy_net.state_dict(), Path(__file__).parent / "model_rl.pt")    
+                torch.save(critic.state_dict(), Path(__file__).parent / "model_rl_value_function.pt")   
             configurate_batch_sizes(events_replay_memory_list,batch_supervised_sizes)
             print(f"Episode: {i+1} AVG_Return: {avg_return/print_stats_every} AVG_value_loss: {avg_value_loss/cnt_trained_prior_to_print_stats} AVG_explained_var: {avg_explained_var/cnt_trained_prior_to_print_stats} AVG_actor_loss: {avg_actor_loss/cnt_trained_prior_to_print_stats} AVG_entropy: {avg_entropy/cnt_trained_prior_to_print_stats}")
             avg_value_loss=0
@@ -752,9 +757,9 @@ def loop(env,policy_net,critic,optimizer_policy_net,optimizer_critic, n_episodes
             avg_entropy=0
             cnt_stats=0
             cnt_trained_prior_to_print_stats=0
+
         #print(cnt_epsiodes)
-    torch.save(policy_net.state_dict(), Path(__file__).parent / "model_rl.pt")    
-    torch.save(critic.state_dict(), Path(__file__).parent / "model_rl_value_function.pt")   
+    
 
 
 def main(argv=None):
