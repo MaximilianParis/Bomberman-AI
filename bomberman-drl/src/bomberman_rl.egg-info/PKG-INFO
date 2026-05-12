@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: bomberman_rl
+Version: 0.1.0
+Summary: Bomberman environment for reinforcement learning
+Author: N.
+Requires-Python: >=3.8
+Requires-Dist: gymnasium[other]
+Requires-Dist: pygame[other]
+Requires-Dist: configargparse
+Provides-Extra: dev
+Requires-Dist: black; extra == "dev"
+Requires-Dist: pre-commit; extra == "dev"
+Dynamic: author
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary

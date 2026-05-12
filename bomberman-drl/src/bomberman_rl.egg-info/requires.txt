@@ -1,0 +1,7 @@
+gymnasium[other]
+pygame[other]
+configargparse
+
+[dev]
+black
+pre-commit
